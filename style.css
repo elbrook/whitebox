@@ -1,0 +1,589 @@
+/* style.css
+ * Handles most (all?) styling of the UI.
+ * 
+ * TO DO:
+ * -- TIDY THIS UP!
+*/
+
+
+/*/////////////////////////////////////////////////////////////////////*/
+/* Top-level containers */
+body {
+	font-family: Cantarell, "Lucida Grande", "Trebuchet MS", Verdana, sans;
+	font-size: 9pt;
+	margin: 0; padding: 0;
+	cursor: default;
+	overflow: hidden;
+}
+a {
+	text-decoration: none;
+	color: inherit;
+}
+::-webkit-scrollbar {
+		display: none;
+}
+
+#debug {
+	display: none;
+	position: fixed;
+	z-index: 2000;
+	top: 0pt; left: 0pt;
+	width: 100%; height: 100%;
+	font-size: 7pt;
+	background-color: rgba(0,0,0,0.75);
+	color: #eee;
+	font-family: monospace;
+}
+
+
+/*/////////////////////////////////////////////////////////////////////*/
+/* Buttons
+ * General form
+ */
+.button {
+	position: relative;
+	width: 51pt;
+	height: 100%;
+	float: left;
+	font-size: 8pt;
+	line-height: 24pt;
+	text-align: center;
+	background-color: #fff;
+	border-right: solid;
+	border-width: 1pt;
+	border-color: rgba(0,0,0,0.065);
+	color: rgba(128,184,255,1.0);
+	user-select: none;
+	-webkit-user-select: none;
+}
+.button:active, .button.selected, .button.inProgress, #settingsEditor .button.selected {
+	background-color: #eee;
+}
+#refresh.inProgress, #save.inProgress {
+	background-color: #fff;
+}
+
+
+/* Input elements
+ * General form
+ */
+.inputDiv {
+	position: relative;
+	margin: 5.5pt 2% 0pt 2%;
+	height: 13pt;
+	clear: both;
+}
+.inputDiv.focused {
+	border-left: solid;
+	border-left-width: 8pt;
+	border-left-color: rgba(0,0,0,0.065);
+}
+.textareaResizeDiv {
+	display: inline-block;
+	margin: 9pt 2% 0pt 2%;
+}
+input {
+	position: relative;
+	left: 3.5pt;
+	width: 96%;
+}
+textarea {
+	width: 100%;
+}
+input, textarea {
+	resize: none;
+	border: none;
+	padding: 0;
+	margin: 0;
+	overflow: hidden;
+	background: transparent;
+	
+	border-bottom: dashed;
+	border-bottom-width: 1pt;
+	border-bottom-color: rgba(0,0,0,0.125);
+	
+	font-size: 9pt;
+	line-height: 13pt;
+	font-family: Cantarell, "Lucida Grande", "Trebuchet MS", Verdana, sans;
+	color: rgba(0,0,0,0.75);
+}
+.inputDiv.focused input, .inputDiv.focused textarea {
+	left: -4pt;
+	padding-right: 7.5pt;
+}
+textarea:focus, input:focus {
+	outline: none;
+}
+::-webkit-input-placeholder {
+	font-weight: normal;
+	color: rgba(0,0,0,0.35);
+}
+
+
+/* Progress indicators
+ * progressBar, progressMessage, flash
+ */
+.progressBar {
+	position: absolute;
+	height: 100%;
+	bottom: -5pt;
+	background-color: rgba(0,0,0,0.0625);
+	border-top: solid;
+	border-width: 5pt;
+	border-color: rgba(255,255,255,0.8);
+}
+.flash {
+	position: absolute;
+	top: 0pt; left: 0pt;
+	height: 100%; width: 100%;
+	background-color: rgba(255,255,255,0.7);	
+}
+.progressMessage {
+	position: absolute;
+	top: 0pt; left: 0pt;
+	height: 100%; width: 100%;
+	line-height: 120pt;
+	text-align: center;
+	color: #808080;
+}
+.locked {
+	-webkit-filter: blur(3pt);
+	transition: -webkit-filter 6000ms;
+	opacity: 0.4;
+}
+.label {
+	transition: -webkit-filter 3000ms, opacity 3000ms;
+}
+.label.locked {
+	-webkit-filter: blur(2pt);
+	transition: -webkit-filter 3000ms, opacity 3000ms;
+	opacity: 0.5;
+}
+
+
+/* Colors
+ */
+.a0:after {
+	background-color: rgba(200,228,255,0.8);
+}
+.a1:after {
+	background-color: rgba(255,228,200,0.8);
+}
+.a2:after {
+	background-color: rgba(228,200,255,0.8);
+}
+.a3:after {
+	background-color: rgba(228,255,200,0.8);
+}
+.progressBar.a0, .flash.a0 {
+	border-color: rgba(200,228,255,1.0);
+}
+.progressBar.a1, .flash.a1 {
+	border-color: rgba(255,228,200,1.0);
+}
+.progressBar.a2, .flash.a2 {
+	border-color: rgba(228,200,255,1.0);
+}
+.progressBar.a3, .flash.a3 {
+	border-color: rgba(228,255,200,1.0);
+}
+#toAddresses.a0, #fromAddress.a0 {
+	color: rgba(128,184,255,1.0);
+}
+#toAddresses.a1, #fromAddress.a1 {
+	color: rgba(250,176,72,1.0);
+}
+#toAddresses.a2, #fromAddress.a2 {
+	color: rgba(184,128,255,1.0);
+}
+#toAddresses.a3, #fromAddress.a3 {
+	color: rgba(140,230,0,1.0);
+}
+
+
+/*/////////////////////////////////////////////////////////////////////*/
+/* Top-level view #1:
+ * settingsEditor
+ */
+#settingsEditor {
+	position: fixed;
+	z-index: 1000;
+	display: none;
+	top: 20%;
+	width: 220pt; left: 50%; margin-left: -110pt;
+	background-color: rgba(255,255,255,0.6);
+	border: solid;
+	border-width: 1pt;
+	border-color: rgba(0,0,0,0.065);
+	user-select: none;
+	-webkit-user-select: none;
+}
+.settingsLock {
+	-webkit-filter: blur(4pt);
+	transition: -webkit-filter 6000ms;
+	opacity: 0.4;
+}
+
+/* settingsEditor toolbar #1:
+ * accountsTabs
+ */
+#accountsTabs {
+	height: 24pt;
+	border-bottom: solid;
+	border-width: 1pt;
+	border-color: rgba(0,0,0,0.065);
+}
+#settingsEditor .button {
+	background: transparent;
+}
+#settingsEditor .button.empty {
+	color: rgba(0,0,0,0.35);
+}
+#settingsSaveButton {
+	border-left: none;
+	border-right: none;
+	border-top: none;
+	border-width: 1pt;
+	border-color: rgba(0,0,0,0.065);
+	float: right;
+	margin-top: 1pt;
+} 
+
+/* settingsEditor content
+ */
+#emailInputDiv, #serverInputDiv, #SMTPServerInputDiv {
+	margin-top: 8pt;
+}
+#emailInput {
+	font-weight: bold;
+}
+
+
+/*/////////////////////////////////////////////////////////////////////*/
+/* Top-level view #2:
+ * listView
+ */
+#listView {
+	position: absolute;
+	z-index: 150;
+	width: 100%;
+	height: 100%;
+	overflow: auto;
+	left: 0pt;
+	border-right: solid;
+	border-width: 1pt;
+	border-color: rgba(0,0,0,0.1);
+	user-select: none;
+	-webkit-user-select: none;
+	background-color: white;
+}
+#listView.onSide {
+	width: 30%;
+}
+
+/* listView toolbar #1:
+ * topBar
+ */
+#topbar {
+	position: relative;
+	height: 24pt;
+	border-bottom: solid;
+	border-width: 1pt;
+	border-color: rgba(0,0,0,0.1);
+}
+#searchBar {
+	position: absolute;
+	left: 25.5pt;
+	right: 2%;
+	height: 24pt;
+	background-color: #fff;
+}
+#closeBox {
+	position: absolute;
+	color: rgba(0,0,0,0.4);
+	width: 24pt;
+}
+#closeBox img {
+	position: absolute;
+	width: 11.5pt;
+	height: 11pt;
+	top: 7pt;
+	left: 6.5pt;
+}
+
+/* listView toolbar #2:
+ * toolbar – change name to bottomBar
+ */
+#toolbar, #attachmentsBar {
+	position: fixed;
+	bottom: 0pt;
+	z-index: 100;
+	width: 100%;
+	height: 24pt;
+	background-color: #fff;
+	border-top: solid;
+	border-width: 1pt;
+	border-color: rgba(0,0,0,0.1);
+	user-select: none;
+	-webkit-user-select: none;
+}
+#toolbar.onSide {
+	width: 30%;
+}
+
+
+/* listView content #1:
+ * mailbox
+ */
+#mailbox {
+	position: absolute;
+	width: 100%;
+	top: 24pt;
+}
+#mailbox:before {
+	content: '';
+	position: absolute;
+	top: 0pt;
+	left: 0pt;
+	height: 100%;
+	width: 100%;
+	background-image: url('Background images/waves4.jpg');
+	background-attachment: fixed;
+	background-position: left;
+	background-size: auto 100%;
+	opacity: 0.5;
+}
+
+/* listView content #2:
+ * message
+ */
+.message {
+	position: relative;
+	z-index: 5;
+	padding: 8pt 2% 8pt 2%;
+	width: 96%;
+	clear: both;
+
+	border-top: solid;
+	border-width: 1pt;
+	border-color: rgba(0,0,0,0.1);
+
+	background-color: rgba(200,210,255,0.3);/*
+	background-image: linear-gradient(
+		to top,
+		rgba(0,0,0,0.064) 0pt,
+		rgba(0,0,0,0.048) 1.8pt,
+		rgba(0,0,0,0.0) 4.0pt
+	);*/
+	opacity: 0.75;
+	color: #000;	
+}
+.message.hasAttachments:before {
+	content: "";
+	position: absolute;
+	top: 0pt;
+	right: 0pt;
+	height: 100%;
+	width: 100%;
+	background-image: url('Graphics/clip-white.png');
+	background-repeat: no-repeat;
+	background-position: top right;
+	background-size: auto 95%;
+}
+.message.selected {
+	background-color: rgba(255,255,255,0.8);
+	color: black;
+	border-color: rgba(0,0,0,0.1);
+}
+.message:after {
+	content: "";
+	position: absolute;
+	z-index: 2;
+	top: 0pt;
+	left: 0pt;
+	height: 100%;
+	width: 13pt;
+	opacity: 1.0;
+}
+
+/* listView message content
+ */
+.date {
+	margin-top: 2pt;
+	float: right;
+	font-size: 8pt;
+	position: relative;
+	z-index: 5;
+}
+.from {
+	position: relative;
+	z-index: 10;
+	font-size: 10pt;
+	height: 13pt;
+	overflow: hidden;
+	word-wrap: break-word;
+}
+.subject {
+	position: relative;
+	z-index: 10;
+	clear: both;
+	font-size: 8pt;
+	line-height: 13pt;
+	height: 13pt;
+	overflow: hidden;
+	position: relative;
+	z-index: 5;
+	color: #555;
+}
+.selected span {
+	color: black;
+}
+.selected .summary {
+	color: black;
+}
+.unseen .from, .unseen .date {
+	font-weight: bold;
+}
+ 
+
+/*/////////////////////////////////////////////////////////////////////*/
+/* Top-level view #3:
+ * messageView
+ */
+ #messageView {
+	display: none;
+	position: absolute;
+	z-index: 100;
+	height: 100%;
+	width: 70%;
+	left: 30%;
+	overflow: auto;
+	background-color: #fff;
+}
+.messageViewContainer {
+	position: relative;
+}
+#messageContainer {
+	display: none;
+	min-height: 100%;
+}
+
+/* messageView toolbar #1:
+ * messageViewHeader
+ */
+.messageViewHeader {
+	position: absolute;
+	z-index: 999;
+	top: 0pt;
+	width: 100%;
+	background-color: white;
+	border-bottom: solid;
+	border-width: 1pt;
+	border-color: rgba(0,0,0,0.1);
+	color: #808080;
+	height: 24pt;
+	max-height: 25%;
+	overflow: auto;
+	user-select: none;
+	-webkit-user-select: none;
+}
+.topButtons {
+	float: right;
+	margin-left: 2%;
+}
+.messageViewHeader .button {
+	border-right: none;
+	border-bottom: none;
+	border-left: solid;
+	border-width: 1pt;
+	border-color: rgba(0,0,0,0.065);
+	float: right;
+}
+#messageHeader .topButtons {
+	border-bottom: solid;
+	border-width: 1pt;
+	border-color: rgba(0,0,0,0.1);
+}
+#toAddresses, #fromAddress {
+	padding: 6pt 2% 5.5pt 2%;
+	font-size: 8pt;
+	line-height: 13pt;
+}
+#toAddresses p, #fromAddress p {
+	margin-top: 3pt;
+}
+
+/* messageView toolbar #2:
+ * attachmentsBar
+ */
+#attachmentsBar {
+	width: 70%;
+	display: none;
+	right: 0pt;
+}
+.attachment {
+	width: auto;
+	color: #eee;
+	background-color: rgba(0,0,0,0.6);
+	padding: 0pt 2%;
+}
+
+/* messageView content #1:
+ * content
+ */
+.content {
+	padding-top: 24pt;
+}
+#messageText {
+	position: absolute;
+	width: 100%;
+	height: 100%;
+	border: none;
+	word-wrap: break-word;
+	font-size: 9pt;
+}
+#messageText a {
+	color: #03d;
+	text-decoration: underline;
+}
+.text {
+	padding: 4%;
+}
+p {
+	padding: 0;
+	margin: 0;
+}
+
+/* messageView content #2:
+ * composer
+ */
+#composeContainer {
+	display: none;
+	border-bottom: solid;
+	border-width: 1pt;
+	border-color: rgba(0,0,0,0.1);
+	user-select: none;
+	-webkit-user-select: none;
+}
+#composer {
+	padding-bottom: 35.5pt;
+/*	background-image: linear-gradient(
+		to top,
+		rgba(0,0,0,0.048) 0pt,
+		rgba(0,0,0,0.036) 1.8pt,
+		rgba(0,0,0,0.0) 4.0pt
+	);*/
+}
+#composeToDiv {
+	width: 45%;
+	margin-top: 7.5pt;
+}
+#composeCcDiv {
+	display: none;
+}
+#composeSubjectDiv {
+	width: 45%;
+}
+#composeBodyDiv {
+	width: 94.65%;
+}

@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Whitebox</title>
+<link rel="stylesheet" type="text/css" href="style.css" />
+<script type="text/javascript" src="JS libraries/jquery.js"></script>
+<script type="text/javascript" src="MailStorage.js"></script>
+<script type="text/javascript" src="MailConnection.js"></script>
+<script type="text/javascript" src="HTMLBuilder.js"></script>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<meta name="viewport" content="initial-scale = 1.0,maximum-scale = 1.0" />
+</head>
+<body>
+
+<div id="debug"></div>
+
+<div id="listView">
+	<div id="topbar">
+		<div id="closeBox" class="button"><img src="Graphics/closeButton.png" /></div>
+		<div id="searchBar">
+			<div id="searchInputDiv" class="inputDiv"><input id="searchInput" placeholder="Find…" /></div>
+		</div>
+	</div>
+		
+	<div id="mailbox"></div>
+
+	<div id="toolbar">
+		<div id="compose" class="button">Compose</div>
+		<div id="refresh" class="button"><span class="label">Refresh</span></div>
+		<div id="options" class="button">Options</div>
+	</div>
+
+</div>
+<div id="messageView">
+	<div id="composeContainer" class="messageViewContainer">
+		<div id="composeHeader" class="messageViewHeader">
+			<div class="topButtons">
+				<div id="send" class="button">Send</div>
+				<div id="save" class="button"><span class="label">Save</span></div>
+				<div id="discard" class="button">Discard</div>
+			</div>
+			<div id="fromAddress">from: </div>
+		</div>
+		<div id="composer" class="content">
+			<div id="composeToDiv" class="textareaResizeDiv">
+				<textarea id="composeTo" placeholder="To" rows="1"></textarea>
+			</div>
+			<div id="composeCcDiv" class="textareaResizeDiv">
+				<textarea id="composeCc" placeholder="Cc" rows="1"></textarea>
+			</div>
+			<div id="composeSubjectDiv" class="textareaResizeDiv">
+				<textarea id="composeSubject" placeholder="Subject" rows="1"></textarea>
+			</div>
+			<div id="composeBodyDiv" class="textareaResizeDiv">
+				<textarea id="composeBody" placeholder="Message text" rows="1"></textarea>
+			</div>
+		</div>
+		<div id="sendProgressMessage" class="progressMessage"></div>
+	</div>
+
+	<div id="messageContainer" class="messageViewContainer">
+		<div id="messageHeader" class="messageViewHeader">
+			<div class="topButtons">
+				<div id="delete" class="button">Delete</div>
+				<div id="forward" class="button">Forward</div>
+				<div id="reply" class="button">Reply</div>
+			</div>
+			<div id="toAddresses"></div>
+		</div>
+		<iframe id="messageText" class="content" sandbox></iframe>
+		<div id="loadProgressMessage" class="progressMessage"></div>
+	</div>
+	
+	<div id="attachmentsBar">
+	</div>
+</div>
+
+<div id="settingsEditor">
+	<div id="accountsTabs">
+		<div class="button">1</div>
+		<div class="button">2</div>
+		<div class="button">3</div>
+		<div class="button">4</div><!--Optional style: empty-->
+	</div>
+	<div id="emailInputDiv" class="inputDiv"><input id="emailInput" placeholder="Email address" /></div>
+	
+	<div id="serverInputDiv" class="inputDiv"><input id="serverInput" placeholder="Imap server address" /></div>
+	<div id="userInputDiv" class="inputDiv"><input id="userInput" placeholder="User name" /></div>
+	<div id="passInputDiv" class="inputDiv"><input id="passInput" placeholder="Password" type="password" /></div>
+	
+	<div id="SMTPServerInputDiv" class="inputDiv"><input id="SMTPServerInput" placeholder="SMTP server address" /></div>
+	<div id="SMTPUserInputDiv" class="inputDiv"><input id="SMTPUserInput" placeholder="User name" /></div>
+	<div id="SMTPPassInputDiv" class="inputDiv"><input id="SMTPPassInput" placeholder="Password" type="password" /></div>
+	<div id="settingsSaveButton" class="button">Close</div>
+</div>
+
+
+<script>
+// Index.html
+// Handle UI display and actions.
+//
+// TO FIX:
+// -- FILTER SHOULD CHANGE SELECTED MESSAGE IF NO LONGER SHOWN?
+// -- HIDE CLOSE BUTTON IF SEARCHBAR HAS FOCUS (TOO CONFUSING)
+//
+// TO IMPROVE:
+// -- ORGANIZE BETTER
+// -- KEYBOARD SHORTCUTS
+// -- "CLEAR FILTER" BUTTON
+// -- CHOOSE SEND ACCOUNT
+
+
+//
+// Initializations
+//
+var gui = require('nw.gui');
+//gui.Window.get().showDevTools();
+
+refreshView();
+// doServerUpdate();
+var refreshTimer = setInterval( doServerUpdate, 1000*60*20 );
+
+
+//
+// Activation of buttons and other elements
+//
+$('#refresh').click(doRefresh);
+$("#delete").click(doDelete);
+$("#compose").click(doCompose);
+$("#send").click(doSend);
+$("#discard").click(doDiscard);
+$("#reply").click(showReply);
+$("#forward").click(showForward);
+$("#closeBox").click(function(){ gui.App.quit() });
+$("#options").click(showOptions);
+$("#save").click(doSave);
+var hoverTimer;
+$('#toAddresses').mouseenter( function() {
+	var elem = this;
+	hoverTimer = setTimeout( function() {
+		$(elem).parent().css('height','auto');
+			}, 150 );
+});
+$('#toAddresses').mouseleave( function() {
+	clearTimeout(hoverTimer);
+	$(this).parent().css('height','24pt');
+});
+$('input, textarea').focus( function() {
+	$('.focused').toggleClass( 'focused', false ); // only one focus
+	$(this).parents('.inputDiv').toggleClass( 'focused', true );
+});
+$('.textareaResizeDiv').on( 'keyup', 'textarea', function() {
+	rejigTextareaHeight(this)
+});
+function rejigTextareaHeight(elem) {
+    $(elem).height( 0 );
+    $(elem).height( elem.scrollHeight );
+}
+$('#searchInput').on( 'keyup', doSearch );
+
+
+//
+// Update methods
+//
+function doRefresh() {
+	if( $('#refresh').hasClass('inProgress') )
+		showDebug();
+	else
+		doServerUpdate();
+}
+function doServerUpdate() {
+	setupUpdatesIndicator();
+	MailConnection.Update( endUpdatesIndicator );
+}
+function refreshView() {
+	console.log("Refreshing view...");
+	$('#mailbox').html( getMailboxHTML() );
+	$(".message").click(messageClicked);
+	if( selected ) {
+		selected = document.getElementById(selected.id);
+		$(selected).toggleClass('selected',true);
+	}
+	setMessageSearchFilter( $('#searchInput').val() );
+}
+
+
+//
+// Window moving
+//
+var mouseDown = false;
+var dx,dy;
+$('#listView,.messageViewHeader').on('mousedown',function(event) {
+	mouseDown = true;
+	dx = window.screenX-event.screenX;
+	dy = window.screenY-event.screenY /*frameless needs offset:*/ -30;
+});
+$(window).on('mousemove',function(event) {	
+	if(mouseDown) {
+		window.moveTo( event.screenX + dx, event.screenY + dy );		
+	}
+});
+$(window).on('mouseup',function() {
+	mouseDown = false;
+});
+
+
+//
+// Settings editor
+//
+$('#settingsSaveButton').click( function() {
+	saveCurrentSettings();
+	hideOptions();
+});
+$('#accountsTabs .button').click( function() {
+	saveCurrentSettings();
+	showCurrentSettings($(this).text());
+});
+function showOptions() {
+	$('#settingsEditor').show();
+	$('#listView').addClass('settingsLock');
+	$('#messageView').addClass('settingsLock');
+	$('#compose').addClass('inProgress');
+	
+	showCurrentSettings(1);
+}
+function showCurrentSettings(n) {
+	$('#accountsTabs .button').removeClass('selected');
+	$('#accountsTabs .button:nth-child('+n+')').addClass('selected');
+	
+	var settings = MailStorage.GetSettings();
+	var accountName = Object.keys(settings)[n-1];
+	
+	if( !accountName ) {
+		$('#settingsEditor input').val('');
+		return;
+	}	
+	
+	$('#emailInput').val( accountName );
+	
+	settings = settings[accountName];
+	
+	$('#serverInput').val( settings.host );
+	$('#userInput').val( settings.user );
+	$('#passInput').val( settings.password );
+	
+	$('#SMTPServerInput').val( settings.smtp.host );
+	$('#SMTPUserInput').val( settings.smtp.auth.user );
+	$('#SMTPPassInput').val( settings.smtp.auth.pass );
+}
+$('#emailInput').keyup( function() {
+	$('#userInput').val( $(this).val() );
+	$('#SMTPUserInput').val( $(this).val() );
+});
+$('#serverInput').keyup( function() {
+	$('#SMTPServerInput').val( $(this).val() );
+});
+$('#userInput').keyup( function() {
+	$('#SMTPUserInput').val( $(this).val() );
+});
+$('#passInput').keyup( function() {
+	$('#SMTPPassInput').val( $(this).val() );
+});
+function saveCurrentSettings() {
+
+	var settings = {
+		host: $('#serverInput').val(),
+		port: 993,
+		tls: true,
+		tlsOptions: {rejectUnauthorized: false},
+		user: $('#userInput').val(),
+		password: $('#passInput').val(),
+		smtp: {
+			host: $('#SMTPServerInput').val(),
+			port: 465,
+			secureConnection: true,
+			auth: {
+				user: $('#SMTPUserInput').val(),
+				pass: $('#SMTPPassInput').val()
+			}
+		}
+	};
+	
+	MailStorage.AddSetting( $('#emailInput').val(), settings );
+}
+function hideOptions() {
+	$('#settingsEditor').hide();
+	$('#listView').removeClass('settingsLock');
+	$('#messageView').removeClass('settingsLock');
+	$('#compose').removeClass('inProgress');
+}
+
+
+//
+// Selecting messages
+//
+var selected = null;
+
+function messageClicked() {
+	selectMessage(this);
+}
+function selectMessage(elem) {
+	if( selected == elem ) {
+		viewerActive? hideMessageView():showMessageView();
+	} else {
+		showMessageView();
+		$(selected).toggleClass("selected", false);
+		$(elem).toggleClass("selected", true);
+		selected = elem;
+		loadSelectedIntoViewer();
+		if( $(elem).hasClass('unseen') )
+			markRead(elem);
+	}
+}
+function deselect() {
+	$(selected).toggleClass("selected", false);
+	selected = null;
+}
+
+
+//
+// Showing messages
+//
+var viewerActive = false;
+var hackDelay;
+
+function loadSelectedIntoViewer() {
+	UI.EndDownloadIndicator();
+	getMessageHTMLSrcByID( selected.id, function(src, attachments) {
+		$('#messageText').attr('src',src);
+		console.log('Attachments: '+attachments);
+		if(attachments) {
+			$('#attachmentsBar').html(attachments);
+			$('.attachment').click( function() {
+				gui.Shell.openItem(this.id);
+				//gui.Shell.showItemInFolder(this.id);
+			});
+			$('#attachmentsBar').show();
+		}
+	});
+	$('#toAddresses').html( getMessageHeaderByID(selected.id) );
+	$('#toAddresses').removeClass();
+	$('#toAddresses').addClass( getAccountClassByID(selected.id) );
+}
+function openLinkInNewWindow() {
+	window.open(this.href, '_new_', 'width=800, height=600, toolbar=1');
+	return false;
+}
+function showMessageView() {
+	if( viewerActive ) return;
+	// Hacks to make change smoother
+	var newWidth = window.outerWidth+1.5*window.innerWidth;
+	$("#listView").css( "width", newWidth*0.3+"px" );
+	$("#toolbar").css( "width", newWidth*0.3+"px" );
+	$("#messageView").css( "left",  newWidth*0.3+"px" );	
+	$("#messageView").css( "width", newWidth*0.7+"px" );	
+	$(".header").css( "width", newWidth*0.7+"px" );
+	clearTimeout(hackDelay);
+	hackDelay = setTimeout( function() {
+		$("#listView").css( "width", "30%" );
+		$("#toolbar").css( "width", "30%" );
+		$("#messageView").css( "left",  "30%" );
+		$("#messageView").css( "width", "70%" );
+		$(".header").css( "width", "100%" );		
+	}, 3000 );
+
+	// Standard changes
+	$('#messageView').show();
+	$('#messageContainer').show();
+	$("#listView").toggleClass("onSide",true);
+	$("#toolbar") .toggleClass("onSide",true);
+	window.resizeTo( newWidth, window.outerHeight );
+	viewerActive = true;
+}
+function hideMessageView() {
+	if( !viewerActive ) return;
+	// Hacks
+	var newWidth = window.outerWidth-window.innerWidth*0.6;
+	$("#listView").css("width",newWidth+"px");
+	$("#toolbar").css("width",newWidth+"px");
+	clearTimeout(hackDelay);
+	hackDelay = setTimeout( function() {
+		$("#listView").css( "width", "100%" );
+		$("#toolbar") .css( "width", "100%" );		
+	}, 10000 );
+
+	// Standard
+	$('#messageView').hide();
+	$('#messageContainer').hide();
+	$("#listView").toggleClass("onSide",false);
+	$("#toolbar").toggleClass("onSide",false);	
+	window.resizeTo(newWidth,window.outerHeight);
+	viewerActive = false;
+	$('#messageText').html('');
+	$('.message.selected').removeClass('selected');
+	selected = null;
+	hideComposeElements();
+}
+
+
+//
+// Showing progress
+//
+var recentlyRefreshed = false;
+UI();
+function UI() {
+	//
+	// List of public methods
+	//
+	UI.Refresh = Refresh;
+	UI.UpdatesProgress = UpdatesProgress;
+	UI.UpdatesLog = UpdatesLog;
+	UI.SendProgress = SendProgress;
+	
+	UI.SetupDownloadIndicator = SetupDownloadIndicator;
+	UI.DownloadProgress = DownloadProgress;
+	UI.DownloadAttachmentProgress = DownloadAttachmentProgress;
+	UI.EndDownloadIndicator = EndDownloadIndicator;
+	
+	//
+	// For refresh
+	//
+	function Refresh() {
+		if( !recentlyRefreshed ) {
+			recentlyRefreshed = true;
+			refreshView();
+			setTimeout( function(){ recentlyRefreshed = false; }, 1000*10 );
+		}
+	}
+	function UpdatesProgress(accountName, progress) {
+		$('#refresh .progressBar.a'+accountToNum(accountName)).animate({height:100-Math.round(progress)+'%'});
+	}
+	function UpdatesLog( message ) {
+		$('#debug').prepend( '<div class="debugMessage">'+message+'</div>' );
+	}
+		
+	//
+	// For send
+	//
+	function SendProgress(text) {
+		$('#composeContainer .progressMessage').text(text);
+	}
+	
+	//
+	// For download message
+	//
+	function SetupDownloadIndicator( message ) {
+		$('#messageText').attr('src','');
+		$('#attachmentsBar').hide();
+		$('#loadProgressMessage').show();
+		$('#loadProgressMessage').text(message);
+	}
+	function DownloadProgress( message ) {
+		$('#loadProgressMessage').text(message);
+	}
+	function DownloadAttachmentProgress( filename, totalsize, newchunk ) {
+		//if($('#loadProgressMessage').children('#'+filename).length == 0)
+		//	$('#loadProgressMessage').append('<div id="'+filename+'" progress=0></div>');
+		//var div = $('#loadProgressMessage #'+filename);
+		//div.attr('progress', div.attr('progress')+newchunk);
+		if( !$('loadProgressMessage').attr(filename) )
+			 $('loadProgressMessage').attr(filename, 0 );
+		$('loadProgressMessage').attr(filename,
+			$('loadProgressMessage').attr(filename)+newchunk );
+		$('loadProgressMessage').text(
+			filename+': '+
+			$('loadProgressMessage').attr(filename)
+				);
+	}
+	function EndDownloadIndicator() {
+		$('#loadProgressMessage').html('');
+		$('#loadProgressMessage').hide();
+	}
+}
+var refreshGlowTimer;
+function setupUpdatesIndicator() {
+	$('#refresh').addClass('inProgress');
+	clearInterval( refreshGlowTimer );
+	refreshGlowTimer = setInterval( function() {
+		$('#refresh .label').toggleClass('locked'); }, 3000 );
+		
+	$('#refresh .progressBar').remove();
+	var accountNames = getAccountNames();
+	var pcWidth = Math.ceil(1/accountNames.length*100);
+	accountNames.forEach( function(accountName) {
+		$('#refresh').append('<div class="progressBar a'+accountToNum(accountName)+'" style="left:'+pcWidth*accountToNum(accountName)+'%;width:'+pcWidth+'%;"></div>');
+	});
+}
+function showDebug() {
+	$('#debug').show();
+	$('#listView').addClass('locked');
+	$('#messageView').addClass('locked');
+}
+$('#debug').click( hideDebug );
+function hideDebug() {
+	$('#debug').hide();
+	$('#listView').removeClass('locked');
+	$('#messageView').removeClass('locked');
+}
+function endUpdatesIndicator() {
+	clearInterval( refreshGlowTimer );
+	$('#refresh .label').removeClass('locked');
+	$('#refresh .progressBar').fadeOut();
+	$('#refresh').removeClass('inProgress');
+	refreshView();
+}
+
+//
+// Composing
+//
+var sendAccount;
+function doCompose() {
+	if( $('#compose').hasClass('selected') ) {
+		hideComposeElements();
+	} else {
+		showComposeElements();
+	}
+}
+function showComposeElements() {
+	showMessageView();
+	$('#compose').toggleClass('selected',true);
+	$('#composeContainer').show();
+	$('#fromAddress').html( getComposeHeaderByID(selected? selected.id:null) );
+	$('#fromAddress').removeClass();
+	$('#fromAddress').addClass( getAccountClassByID(selected? selected.id:null) );
+	sendAccount = getSendAccountByID( selected? selected.id:null );
+}
+function hideComposeElements() {
+	$('#compose').toggleClass('selected',false);
+	$('#composeContainer').hide();
+	if( !selected ) {
+		hideMessageView();
+	}
+}
+function getMessageFromInput() {
+	var To = $('#composeTo').val();
+	var Cc = $('#composeCc').val();
+	var Subject = $('#composeSubject').val();
+	var Body = $('#composeBody').val();
+	
+	var email = {
+		from: sendAccount,
+		to: To,
+		subject: Subject,
+		text: Body
+	};
+	return email;
+}
+
+var saveGlowTimer;
+function doSave() {
+	$('#save').addClass('inProgress');
+	clearInterval(saveGlowTimer);
+	saveGlowTimer = setInterval( function() {
+		$('#save .label').toggleClass('locked'); }, 3000 );
+	var email = getMessageFromInput();
+	MailConnection.SaveDraft( email, sendAccount, function() {
+		clearInterval(saveGlowTimer);
+		$('#save').removeClass('inProgress');
+		$('#save .label').removeClass('locked');
+	});
+}
+
+
+//
+// Sending mail
+//
+function doSend() {
+	setupSendIndicator();
+	var email = getMessageFromInput();
+	MailConnection.SendMessage(sendAccount, email, endSendIndicator);
+}
+function setupSendIndicator() {
+	$('#composer').toggleClass('locked',true);
+	$('#composeHeader').toggleClass('locked',true);
+	$('#sendProgressMessage').text('Sending…');
+	$('#sendProgressMessage').show();
+	$('#sendProgressMessage').css('line-height',$('#composeContainer').css('height'));
+}
+function endSendIndicator(err) {
+	if(err) {
+		alert(err);
+		undoComposeIndicator();
+	} else {
+		$('#composeContainer .progressMessage').text('Done. Refreshing…');
+		setTimeout(cleanupComposeView,3000);
+		doServerUpdate();
+	}
+}
+function cleanupComposeView() {
+	$('#composer textarea').val('');
+	undoComposeIndicator();
+	hideComposeElements();
+}
+function undoComposeIndicator() {
+	$('#composer').removeClass('locked');
+	$('#composeHeader').removeClass('locked');
+	$('#sendProgressMessage').hide();
+}
+
+
+function doDiscard() {
+	hideComposeElements();
+}
+function showReply() {
+	$('#composeTo').val(getAddressesExceptMine(selected.id));
+	$('#composeSubject').val('Re: '+getSubject(selected.id));
+	showComposeElements();
+	$('#composeTo').keyup();
+	$('#composeSubject').keyup();
+}
+function showForward() {
+	$('#composeSubject').val('Fw: '+getSubject(selected.id));
+	$('#composeBody').val($('#messageText').text()); // THIS ISN'T QUITE WORKING…
+	showComposeElements();
+	$('#composeSubject').keyup();
+	$('#composeBody').keyup();
+}
+
+
+//
+// Searching
+//
+function doSearch() {
+	setMessageSearchFilter( $(this).val() );
+}
+function setMessageSearchFilter( filter ) {
+	var terms = filter.split(' ');
+	$('.message').show();
+	terms.forEach( function(term) {
+		$('.message').not(':Contains('+term+')').hide();
+	});
+}
+	// for case-insentitive "contains" filter
+jQuery.expr[":"].Contains = jQuery.expr.createPseudo(function(arg) {
+    return function( elem ) {
+        return jQuery(elem).text().toUpperCase().indexOf(arg.toUpperCase()) >= 0;
+    };
+});
+
+
+//
+// Marking messages
+//
+function markRead(elem) {
+	$(elem).removeClass('unseen');
+	MailConnection.SetFlag( elem.id, "\\Seen", function() {
+		MailStorage.MarkAsSeenByID( elem.id );
+		MailStorage.SaveHeaders();
+	});
+}
+function doDelete() {
+	if( !selected ) return;
+	
+	var elemID = new String(selected.id);
+	MailConnection.SetFlag( elemID, "\\Deleted", function() {
+		MailStorage.DeleteMessage( elemID );
+		MailStorage.SaveHeaders();
+	});
+
+	var next = getNext(selected);
+	$(selected).remove();
+	if( next )
+		selectMessage(next);
+}
+function getNext(elem) {
+	var ReturnElem = $(elem).next(':visible').get(0);
+	if( !ReturnElem ) {
+		ReturnElem = $(elem).prev(':visible').get(0);
+	}
+	return ReturnElem;
+}
+
+
+//
+// Utility functions
+//
+function testF() {
+	alert("Test triggered");
+}
+
+</script>
+
+
+</body>
+</html>

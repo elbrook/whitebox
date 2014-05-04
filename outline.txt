@@ -1,0 +1,74 @@
+Needs work
+----------
+
+Cleaning up:
+-- HTMLBuilder (remove all calls to MailStorage)
+-- index.html (move more calls into HTMLBuilder)
+-- Add checking to ALL function parameters
+
+Functionality:
+
+
+Connections
+-----------
+
+-- UI
+	--> HTMLBuilder
+	--> MailConnections
+
+-- UIProgressUpdater
+
+-- HTMLBuilder
+	--> fs
+
+-- MailStorage
+	--> fs
+
+-- MailData
+	--> MailStorage
+
+-- MailConnections
+	--> MailData
+	--> UIProgressUpdater
+	
+
+Public functions
+----------------
+
+-- UI
+	
+-- UIProgressUpdater
+	-- SetRefreshProgress(Account, Percent)
+	-- AddToRefreshLog(Message)
+	-- SetAttachmentDownloadProgress(ContentID, Percent)
+	
+-- HTMLBuilder
+	-- BuildMailboxList() --> call LoadHeaders --> return HTML
+	
+-- MailStorage
+	-- LoadSettings() --> return forEach Setting
+	-- LoadHeaders() --> return Headers
+	-- SaveSettings(Settings)
+	-- SaveHeaders(Headers)
+	-- SaveMessage(HTML) --> return URL
+	-- SaveAttachment(DataStream) --> callback with URL on done
+	-- DeleteMessage(GUID)
+	
+-- MailData
+	-- AddSetting(Settings)
+	-- AddAttributes(Attributes)
+	-- AddBody(Body)
+	-- SaveAttachment(DataStream) --> callback with URL on done
+	-- GetAllSettings() --> callback forEach Setting
+	-- GetUIDsInBoxAlreadySaved(Account, Box) --> return UIDs
+	-- GetSendSetting(Account) --> return Settings
+	-- Delete(GUID)
+	-- DeleteAllInBoxExcept(Account, Box, UIDs)
+	
+-- MailConnections
+	-- DoRefresh() --> callback on done
+	-- Send(Message) --> callback on done
+	-- MarkAsRead(GUID)
+	-- Delete(GUID)
+	-- AddSetting(Settings)
+	-- DownloadAttachment(ContentID) --> callback with URL on done

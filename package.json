@@ -1,0 +1,13 @@
+{
+	"name": "Whitebox",
+	"main": "index.html",
+	"window": {
+		"toolbar": false,
+		"frame": false,
+		"transparent": true,
+		"width": 320,
+		"height": 600,
+		"position": "center"
+	},
+	"chromium-args" : "--enable-threaded-compositing"
+}
