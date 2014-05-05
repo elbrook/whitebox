@@ -15,6 +15,6 @@ Features
 Issues
 ======
 
-* Attachment support is rudimentary – just downloads files on click.
 * Untested on Windows, and file paths will probably be a problem.
 * Non-utf8 international encodings show up garbled.
+* No support yet for sending attachments, or displaying inline attachments.
