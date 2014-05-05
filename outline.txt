@@ -10,6 +10,10 @@ Cleaning up:
 Functionality:
 -- Attach files on compose
 
+Improvements:
+-- index.html (a couple functions – see file)
+-- Saving messages has a couple issues (see MailConnection)
+
 
 Connections
 -----------
