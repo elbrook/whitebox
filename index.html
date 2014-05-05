@@ -326,7 +326,10 @@ var hackDelay;
 
 function loadSelectedIntoViewer() {
 	UI.EndDownloadIndicator();
-	getMessageHTMLSrcByID( selected.id, function(src, attachments) {
+	var toLoadID = selected.id;
+	getMessageHTMLSrcByID( toLoadID, function(src, attachments) {
+		if( toLoadID != selected.id )
+			return; // Something else has been selected while downloading
 		$('#messageText').attr('src',src);
 		console.log('Attachments: '+attachments);
 		if(attachments) {

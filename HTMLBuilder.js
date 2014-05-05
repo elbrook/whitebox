@@ -52,6 +52,7 @@ function getMessageHTMLSrcByID( ID, callback ) {
 		return '<div class="button attachment" id="'+filePath+'/'+field.filename+'">'+field.filename+' ('+filesize(field.size)+')</div>';
 	}).join(' ');
 	if( !fs.existsSync(filePath) ) {
+		// NEED A CHECK TO SEE IF ALREADY TRYING TO LOAD
 		MailConnection.DownloadParts(ID, function() {
 			callback( filePath+'/message.html', attachments );
 		});
