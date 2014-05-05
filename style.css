@@ -388,7 +388,7 @@ textarea:focus, input:focus {
 	background-image: url('Graphics/clip-white.png');
 	background-repeat: no-repeat;
 	background-position: top right;
-	background-size: auto 95%;
+	background-size: auto 85%;
 }
 .message.selected {
 	background-color: rgba(255,255,255,0.8);
@@ -539,8 +539,6 @@ textarea:focus, input:focus {
 	width: 100%;
 	height: 100%;
 	border: none;
-	word-wrap: break-word;
-	font-size: 9pt;
 }
 #messageText a {
 	color: #03d;

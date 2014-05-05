@@ -75,7 +75,6 @@ function MailConnection() {
 		function waitUpdates() {
 			if( connectionsQueue.length == 0 ) {
 				clearInterval(timer);
-				MailStorage.SaveHeaders();
 				callback();
 			}
 		}
@@ -127,8 +126,6 @@ function MailConnection() {
 					lastQueueLength = boxesQueue.length;
 					inactivityCount = 0;
 					UI.UpdatesProgress( imap.name, percentDone );
-					MailStorage.SaveHeaders();
-					UI.Refresh();
 				} else {
 					// If there's been no activity, get ready to time out
 					inactivityCount++;
@@ -139,6 +136,8 @@ function MailConnection() {
 				if( boxesQueue.length == 0 || inactivityCount >= 36 /*3min*/ ) {
 					clearInterval( timer );
 					fetchLog( 'Account done', '', '', '');
+					MailStorage.SaveHeaders();
+					UI.Refresh();
 					connectionsQueue.pop();
 				}
 			}
@@ -177,12 +176,10 @@ function MailConnection() {
 							struct: true
 						});
 						f.on( 'message', function(message, seqnum) {
-							// Save headers
 							message.once('attributes', function(attributes) {
 								MailStorage.AddHeader(imap.name, box.name, attributes);
 							});
 						});						
-						// Finish
 						f.once( 'end', function() {
 							boxCleanUp();
 						});

@@ -4,9 +4,11 @@ Needs work
 Cleaning up:
 -- HTMLBuilder (remove all calls to MailStorage)
 -- index.html (move more calls into HTMLBuilder)
+-- MailConnection – less logging on fetch headers, more on download bodies
 -- Add checking to ALL function parameters
 
 Functionality:
+-- Attach files on compose
 
 
 Connections

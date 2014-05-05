@@ -45,6 +45,7 @@ function getMailboxHTML() {
 
 var lastMessage = {};
 function getMessageHTMLSrcByID( ID, callback ) {
+	//console.log(ID);
 	var header = MailHeaders[ID];
 	var filePath = path.homedir()+'/Emails/Emails/'+ID;
 	var attachments = _.map(header.parts.attachments, function(field) {

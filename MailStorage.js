@@ -190,7 +190,7 @@ function MailStorage() {
 		text = text.replace( /\s*[\n\r]\s*/gm,
 				"\n"+'<br />'+"\n" ).trim();
 		var html =
-			'<div class="text" style="font-family: Cantarell, sans; font-size: 9pt; padding: 4%;">'+
+			'<div class="text" style="font-family: Cantarell, sans; font-size: 9pt; word-wrap: break-word; padding: 4%;">'+
 			'<div class="subject" style="font-weight: bold; margin-bottom: 13pt;">'+
 			mimelib.parseMimeWords(subject)+
 			'</div>'+
@@ -205,7 +205,14 @@ function MailStorage() {
 			return {};
 		var returnObject = {};
 		if( struct.partID ) {
-			if( struct.disposition && (struct.disposition.type == 'attachment' || struct.disposition.type == 'inline') ) {
+			if(
+				struct.disposition &&
+				(struct.disposition.type == 'attachment' ||
+					(struct.disposition.type == 'inline' &&
+					struct.disposition.params &&
+					struct.disposition.params.filename)
+				)
+			) {
 				returnObject.attachments = {};
 				returnObject.attachments[struct.partID] = struct.disposition.params;
 				if(returnObject.attachments[struct.partID] && !returnObject.attachments[struct.partID].size && struct.size)
