@@ -126,10 +126,10 @@ textarea:focus, input:focus {
 .progressBar {
 	position: absolute;
 	height: 100%;
-	bottom: -5pt;
+	bottom: -0pt;
 	background-color: rgba(0,0,0,0.0625);
 	border-top: solid;
-	border-width: 5pt;
+	border-width: 0pt;
 	border-color: rgba(255,255,255,0.8);
 }
 .flash {
@@ -389,7 +389,7 @@ textarea:focus, input:focus {
 	background-image: url('Graphics/clip-white.png');
 	background-repeat: no-repeat;
 	background-position: top right;
-	background-size: auto 85%;
+	background-size: auto 90%;
 }
 .message.selected {
 	background-color: rgba(255,255,255,0.8);
@@ -565,7 +565,7 @@ p {
 	-webkit-user-select: none;
 }
 #composer {
-	padding-bottom: 35.5pt;
+	padding-bottom: 35.75pt;
 /*	background-image: linear-gradient(
 		to top,
 		rgba(0,0,0,0.048) 0pt,

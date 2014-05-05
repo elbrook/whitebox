@@ -207,8 +207,8 @@ function MailStorage() {
 		if( struct.partID ) {
 			if(
 				struct.disposition &&
-				(struct.disposition.type == 'attachment' ||
-					(struct.disposition.type == 'inline' &&
+				(struct.disposition.type.toLowerCase() == 'attachment' ||
+					(struct.disposition.type.toLowerCase() == 'inline' &&
 					struct.disposition.params &&
 					struct.disposition.params.filename)
 				)

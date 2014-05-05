@@ -49,7 +49,7 @@ function getMessageHTMLSrcByID( ID, callback ) {
 	var header = MailHeaders[ID];
 	var filePath = path.homedir()+'/Emails/Emails/'+ID;
 	var attachments = _.map(header.parts.attachments, function(field) {
-		return '<div class="button attachment" id="'+filePath+'/'+field.filename+'">'+field.filename+' ('+filesize(field.size,{unix:true})+')</div>';
+		return '<div class="button attachment" id="'+filePath+'/'+field.filename+'">'+field.filename+' ('+filesize(field.size)+')</div>';
 	}).join(' ');
 	if( !fs.existsSync(filePath) ) {
 		MailConnection.DownloadParts(ID, function() {

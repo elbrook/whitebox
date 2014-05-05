@@ -378,7 +378,7 @@ function MailConnection() {
 	//
 	function DownloadParts( GUID, callback ) {
 		console.log('Need to download '+GUID);
-		UI.SetupDownloadIndicator('Downloading message from server…');
+		UI.SetupDownloadIndicator('Downloading message from server. Connecting…');
 		var message = MailStorage.GetHeader( GUID );
 		initAction( message.account, message.box, function(imap) {
 			console.log('Opened box for download');
@@ -392,8 +392,9 @@ function MailConnection() {
 				});
 				mailparser.on('attachment', function(attachment) {
 					MailStorage.SaveAttachment(GUID, attachment);
+					console.log(JSON.stringify(attachment));
 					attachment.stream.on('data', function(chunk) {
-						UI.DownloadAttachmentProgress(attachment.generatedFileName, attachment.length, chunk.length);
+						UI.DownloadAttachmentProgress(attachment.generatedFileName, chunk.length);
 					});
 				});
 				mailparser.once('end', function(mail) {

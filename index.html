@@ -38,6 +38,7 @@
 				<div id="send" class="button">Send</div>
 				<div id="save" class="button"><span class="label">Save</span></div>
 				<div id="discard" class="button">Discard</div>
+				<div id="attach" class="button">Attach</div>
 			</div>
 			<div id="fromAddress">from: </div>
 		</div>
@@ -452,19 +453,8 @@ function UI() {
 	function DownloadProgress( message ) {
 		$('#loadProgressMessage').text(message);
 	}
-	function DownloadAttachmentProgress( filename, totalsize, newchunk ) {
-		//if($('#loadProgressMessage').children('#'+filename).length == 0)
-		//	$('#loadProgressMessage').append('<div id="'+filename+'" progress=0></div>');
-		//var div = $('#loadProgressMessage #'+filename);
-		//div.attr('progress', div.attr('progress')+newchunk);
-		if( !$('loadProgressMessage').attr(filename) )
-			 $('loadProgressMessage').attr(filename, 0 );
-		$('loadProgressMessage').attr(filename,
-			$('loadProgressMessage').attr(filename)+newchunk );
-		$('loadProgressMessage').text(
-			filename+': '+
-			$('loadProgressMessage').attr(filename)
-				);
+	function DownloadAttachmentProgress( filename, newchunk ) {
+		$('loadProgressMessage').text(filename+': '+newchunk);
 	}
 	function EndDownloadIndicator() {
 		$('#loadProgressMessage').html('');
