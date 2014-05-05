@@ -2,16 +2,17 @@ Needs work
 ----------
 
 Cleaning up:
--- HTMLBuilder (remove all calls to MailStorage)
+-- HTMLBuilder (remove calls to MailStorage)
 -- index.html (move more calls into HTMLBuilder, UI)
 -- MailConnection – less logging on fetch headers, more on download bodies
--- Add checking to ALL function parameters
+-- Add checking to function parameters
 
 Functionality:
 -- Attach files on compose
+-- Edit drafts
 
 Improvements:
--- index.html (a couple functions – see file)
+-- index.html (a couple more functions needed – see file)
 -- Saving messages has a couple issues (see MailConnection)
 
 
