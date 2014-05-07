@@ -9,5 +9,18 @@
 		"height": 600,
 		"position": "center"
 	},
-	"chromium-args" : "--enable-threaded-compositing"
+	"chromium-args" : "--enable-threaded-compositing",
+	"dependencies": {
+		"filesize": "~2.0.3",
+		"graceful-fs": "~2.0.3",
+		"iced-coffee-script": "~1.7.1-b",
+		"imap": "~0.8.10",
+		"mailcomposer": "~0.2.9",
+		"mailparser": "~0.4.2",
+		"mimelib": "~0.2.14",
+		"moment": "~2.6.0",
+		"nodemailer": "~0.6.3",
+		"path-extra": "~0.2.0",
+		"underscore": "~1.6.0"
+	}
 }
