@@ -1,6 +1,9 @@
 // MailConnection.js
 // Handle all Imap requests and connections, using node-imap and mailparser libraries.
 //
+// TO IMPROVE:
+// -- AVOID OPENING BOXES ALL THE TIME – QUICKER DOWNLOADING
+//
 // TO FIX:
 // -- SAVING MESSAGES (SENT, DRAFTS) HAS 1970 DATE (AND USUALLY NO MESSAGEID) EXCEPT ON GMAIL
 // -- GMAIL AND OUTLOOK SAVE A COPY OF SMTP MESSAGE TO SENT BOX AUTOMATICALLY (WHICH MEANS WE'RE DOING IT TWICE) - FILTER LATER BY MESSAGEID
@@ -69,7 +72,10 @@ function MailConnection() {
 			return;
 		}
 
-		updateMessages();
+		_.each( connections, function(imap) {
+			connectionsQueue.push(imap.name);
+			updateMessages(imap);
+		}
 		
 		var timer = setInterval( waitUpdates, 5000 );
 		function waitUpdates() {
@@ -84,140 +90,135 @@ function MailConnection() {
 	//
 	// Sync messages
 	//
-	function updateMessages() {
+	function updateMessages( imap ) {
+			
+		var boxesQueue = [];
 		
-		_.each( connections, function(imap) {
+		if( !imap.inbox || !imap.sentBoxes || !imap.draftBoxes )
+			getBoxesList(imap.name, fetchMessages, function(err){
+				fetchLog( 'Account error', '', '', err );
+				connectionsQueue.pop()
+			});
+		else
+			fetchMessages();
 			
-			connectionsQueue.push(imap.name);
+		// Call fetch on every box
+		function fetchMessages() {
+			imap.allBoxes.forEach( function(boxName) {
+				boxesQueue.push( {boxName:boxName} );
+				initAction( imap.name, boxName, doFetch, function(){ boxesQueue.pop() } );
+			});
+			startFetchWatch();
+		}
+		
+		// Keep track of fetch progress
+		var timer;
+		var inactivityCount = 0;
+		var lastQueueLength;
+		function startFetchWatch() {
+			timer = setInterval( fetchWatch, 5000 );
+			lastQueueLength = boxesQueue.length
+		}
+		function fetchWatch() {
+			// Calculate progress
+			var percentDone =
+				( 1 - boxesQueue.length / imap.allBoxes.length ) *100;
 			
-			var boxesQueue = [];
-			
-			if( !imap.inbox || !imap.sentBoxes || !imap.draftBoxes )
-				getBoxesList(imap.name, fetchMessages, function(err){
-					fetchLog( 'Account error', '', '', err );
-					connectionsQueue.pop()
-				});
-			else
-				fetchMessages();
-				
-			// Call fetch on every box
-			function fetchMessages() {
-				imap.allBoxes.forEach( function(boxName) {
-					boxesQueue.push( {boxName:boxName} );
-					initAction( imap.name, boxName, doFetch, function(){ boxesQueue.pop() } );
-				});
-				startFetchWatch();
+			if( boxesQueue.length < lastQueueLength ) {
+				lastQueueLength = boxesQueue.length;
+				inactivityCount = 0;
+				UI.UpdatesProgress( imap.name, percentDone );
+			} else {
+				// If there's been no activity, get ready to time out
+				inactivityCount++;
+				fetchLog( 'Inactive', '', '', inactivityCount*5+' seconds' );
 			}
 			
-			// Keep track of fetch progress
-			var timer;
-			var inactivityCount = 0;
-			var lastQueueLength;
-			function startFetchWatch() {
-				timer = setInterval( fetchWatch, 5000 );
-				lastQueueLength = boxesQueue.length
+			// Check if done
+			if( boxesQueue.length == 0 || inactivityCount >= 36 /*3min*/ ) {
+				clearInterval( timer );
+				fetchLog( 'Account done', '', '', '');
+				MailStorage.SaveHeaders();
+				UI.Refresh();
+				connectionsQueue.pop();
 			}
-			function fetchWatch() {
-				// Calculate progress
-				var percentDone =
-					( 1 - boxesQueue.length / imap.allBoxes.length ) *100;
-				
-				if( boxesQueue.length < lastQueueLength ) {
-					lastQueueLength = boxesQueue.length;
-					inactivityCount = 0;
-					UI.UpdatesProgress( imap.name, percentDone );
-				} else {
-					// If there's been no activity, get ready to time out
-					inactivityCount++;
-					fetchLog( 'Inactive', '', '', inactivityCount*5+' seconds' );
+		}
+		
+		// Sync mailbox
+		function doFetch( imap, box ) {
+			var searchDate = moment().subtract(6,'months').toDate();
+			imap.search([ ['SINCE', searchDate] ], function(err, UIDs) {
+				if(err) {
+					fetchLog( 'Error', box.name, '', err );
+					boxCleanUp();
+					return;
+				}
+				if( UIDs.length == 0 ) {
+					boxCleanUp();
+					return;
 				}
 				
-				// Check if done
-				if( boxesQueue.length == 0 || inactivityCount >= 36 /*3min*/ ) {
-					clearInterval( timer );
-					fetchLog( 'Account done', '', '', '');
-					MailStorage.SaveHeaders();
-					UI.Refresh();
-					connectionsQueue.pop();
-				}
-			}
-			
-			// Sync mailbox
-			function doFetch( imap, box ) {
-				var searchDate = moment().subtract(6,'months').toDate();
-				imap.search([ ['SINCE', searchDate] ], function(err, UIDs) {
-					if(err) {
+				// Clean up local files
+				MailStorage.DeleteExcept( imap, box, UIDs );
+
+				// Update \Seen flags in saved headers
+				imap.search([ 'UNSEEN',['SINCE',searchDate] ], function(err,unseenUIDs) {
+					var newlySeenUIDs = _.difference(
+						MailStorage.GetUnseenUIDsInBox(imap.name, box.name),
+							unseenUIDs );
+					MailStorage.MarkAsSeenInBox( imap, box, newlySeenUIDs );
+				});
+				
+				// Download headers we don't have
+				var newMessages = _.difference(UIDs, MailStorage.GetUIDsInBox(imap.name, box.name));
+				fetchLog( 'Fetch total', box.name, '', newMessages.length );
+				if( newMessages.length>0 ) {
+					var f = imap.fetch( newMessages, {
+						envelope: true,
+						struct: true
+					});
+					f.on( 'message', function(message, seqnum) {
+						message.once('attributes', function(attributes) {
+							MailStorage.AddHeader(imap.name, box.name, attributes);
+						});
+					});						
+					f.once( 'end', function() {
+						boxCleanUp();
+					});
+					f.once( 'error', function(err) {
 						fetchLog( 'Error', box.name, '', err );
 						boxCleanUp();
-						return;
-					}
-					if( UIDs.length == 0 ) {
-						boxCleanUp();
-						return;
-					}
-					
-					// Clean up local files
-					MailStorage.DeleteExcept( imap, box, UIDs );
-
-					// Update \Seen flags in saved headers
-					imap.search([ 'UNSEEN',['SINCE',searchDate] ], function(err,unseenUIDs) {
-						var newlySeenUIDs = _.difference(
-							MailStorage.GetUnseenUIDsInBox(imap.name, box.name),
-								unseenUIDs );
-						MailStorage.MarkAsSeenInBox( imap, box, newlySeenUIDs );
 					});
-					
-					// Download headers we don't have
-					var newMessages = _.difference(UIDs, MailStorage.GetUIDsInBox(imap.name, box.name));
-					fetchLog( 'Fetch total', box.name, '', newMessages.length );
-					if( newMessages.length>0 ) {
-						var f = imap.fetch( newMessages, {
-							envelope: true,
-							struct: true
-						});
-						f.on( 'message', function(message, seqnum) {
-							message.once('attributes', function(attributes) {
-								MailStorage.AddHeader(imap.name, box.name, attributes);
-							});
-						});						
-						f.once( 'end', function() {
-							boxCleanUp();
-						});
-						f.once( 'error', function(err) {
-							fetchLog( 'Error', box.name, '', err );
-							boxCleanUp();
-						});
-					} else {
-						boxCleanUp();
-					}
-				});
-			}
-			
-			// Fetch utilities
-			function boxCleanUp() {
-				imap.lock = false;
-				boxesQueue.pop();
-				fetchLog( 'Box done', '', '', '' );
-			}
-			function fetchLog( type, boxName, UID, param, param2 ) {
-				var ID = boxName+'.'+UID;
-				switch(type) {
-					case 'Box done':
-						recentActivity = 1;
-						boxPercentDone = 0;
-						doPrint();
-						break;
-					default:
-						doPrint();
+				} else {
+					boxCleanUp();
 				}
-				function doPrint() {
-					var header = imap.logName+'/'+ID+': ';
-					//console.log( header+type+' '+param );
-					UI.UpdatesLog( header+type+' '+param );
-				}
+			});
+		}
+		
+		// Fetch utilities
+		function boxCleanUp() {
+			imap.lock = false;
+			boxesQueue.pop();
+			fetchLog( 'Box done', '', '', '' );
+		}
+		function fetchLog( type, boxName, UID, param, param2 ) {
+			var ID = boxName+'.'+UID;
+			switch(type) {
+				case 'Box done':
+					recentActivity = 1;
+					boxPercentDone = 0;
+					doPrint();
+					break;
+				default:
+					doPrint();
 			}
-		}); // END _.each loop of connections
-	}	// END updateMessages()
+			function doPrint() {
+				var header = imap.logName+'/'+ID+': ';
+				//console.log( header+type+' '+param );
+				UI.UpdatesLog( header+type+' '+param );
+			}
+		}
+	}	// END updateMessages( imap )
 
 
 	//

@@ -29,6 +29,9 @@ GUIDToConnectionID = ( GUID ) -> GUID.substr 0, GUID.lastIndexOf '№'
 # Convert message GUID to message UID in box context
 GUIDToUID = ( GUID ) -> GUID.substr GUID.lastIndexOf( '№' ) + 1
 
+# Convert account name + box name to connection ID
+ConnectionID = ( AccountName, BoxName ) -> AccountName + '/' + BoxName
+
 
 ###############################################################################
 # Asynchronous library
@@ -50,7 +53,7 @@ class Ʃ
 	# Modify Memo with Iterator for every item
 	@Reduce: ( List, Iterator, Memo, autocb ) ->
 		await Ʃ.ForEach List, ( Value, Key, autocb ) ->
-			await Iterator ( () -> Memo ), Value, Key, defer MergedMemo
+			await Iterator Value, Key, ( () -> Memo ), defer MergedMemo
 			Memo = MergedMemo
 		, defer()
 
@@ -68,7 +71,7 @@ class Ʃ
 
 	# Reduce list of Candidates into a boolean True or False depending on match
 	@FindMatch = ( Text, Candidates, autocb ) ->
-		await Ʃ.Reduce Candidates, ( OtherMatches, Candidate, Index, autocb ) ->
+		await Ʃ.Reduce Candidates, ( Candidate, Index, OtherMatches, autocb ) ->
 			return OtherMatches() if OtherMatches()
 			Text.toLowerCase().indexOf( Candidate ) > -1
 		, false, defer Match
@@ -89,34 +92,55 @@ class MailConnection
 	# MailConnection.SyncAll
 	# MailConnection.DownloadMessage
 
+
 	#
 	# Persistent variables
 	#
+	Connections = {}
+
 
 	#
 	# Set up connections
-	# (Reduce SettingsList to an Array of Connections for every relevant Box)
 	#
-	@UpdateConnections: ( SettingsList ) ->
+	@UpdateConnections = ( SettingsList ) ->
 
-		await Ʃ.Reduce SettingsList, ( MasterConnectionsList, Setting, AccountName, autocb ) ->
+		await Ʃ.Reduce SettingsList, ( Setting, AccountName, MasterList, autocb ) ->
+			await UpdateAccount Setting, AccountName, defer BoxNames
+			await Ʃ.Map BoxNames, ( BoxName, Index, autocb ) ->
+				ConnectionID AccountName, BoxName
+			, defer ConnectionsList
+			
+			MasterList().concat ConnectionsList
 
-			await GetBoxesList Setting, defer BoxesList
-			await Ʃ.Reduce BoxesList, ( MasterList, Box, Index, autocb ) ->
-				await InitBox Setting, AccountName, Box, defer Connection
-				_.extend MasterList(), Connection
-			, {}, defer AccountConnections
+		, [], defer UpdatedList
 
-			_.extend MasterConnectionsList() AccountConnections
+		HoldOvers = _.difference Object.keys( Connections ), UpdatedList
+		delete Connections[ HoldOver ] for HoldOver of HoldOvers
 
-		, {}, defer Connections
+		UpdatedList # return only the keys, i.e. ConnectionIDs
 
-		Connections
+
+	# Merges connections from account with global Connections
+	UpdateAccount = ( Settings, AccountName, autocb ) ->
+
+		await GetBoxesList Settings, defer BoxesList
+		await Ʃ.Reduce BoxesList, ( BoxName, Index, MasterList, autocb ) ->
+
+			# If there's already a working connection to this box, don't change it
+			return MasterList() if MasterList()[ ConnectionID AccountName, BoxName ]
+
+			await InitBox Settings, AccountName, BoxName, defer NewConnection
+
+			_.extend MasterList(), NewConnection
+
+		, Connections, defer NewConnections
+
+		BoxesList
 
 
 	#
 	# Syncing messages
-	# Call Sync on every available connection
+	# (Call Sync on every available connection)
 	#
 	@SyncAll = ( autocb ) ->
 
@@ -196,7 +220,7 @@ class MailConnection
 
 
 	# Recurse branch, adding BoxName if it matches defaults, then merge
-	RecurseBoxForMatches = ( MasterList, Box, BoxName, autocb ) ->
+	RecurseBoxForMatches = ( Box, BoxName, MasterList, autocb ) ->
 		console.log BoxName + ': ' + Box
 		if Box.children
 			await Ʃ.Reduce Box.children, RecurseBoxForMatches, [], defer BranchList
@@ -231,7 +255,7 @@ class MailConnection
 # MailConnection initializations
 ###############################################################################
 	
-	Connections = MailConnection.UpdateConnections MailStorage.GetSettings()
+	# Connections = MailConnection.UpdateConnections MailStorage.GetSettings()
 	# MailConnection.SyncAll()
 
 
@@ -248,41 +272,45 @@ RunAsyncTests = () ->
 		setTimeout defer(), 1000
 	console.log "Done waiting"
 
-	List = { 0:0, 1:0, 2:0, 3:0, 4:0, 5:0, 6:0, 7:0, 8:0, 9:0 }
+	RunTestOn = ( List, autocb ) ->
+		# Test ForEach
+		await Ʃ.ForEach List, ( Value, Key, autocb ) ->
+			await setTimeout defer(), Math.random()*10
+			console.log Key+': '+Value
+		, defer()
 
 
-	# Test ForEach
-	await Ʃ.ForEach List, ( Value, Key, autocb ) ->
-		await setTimeout defer(), Math.random()*10
-		console.log Key+': '+Value
-	, defer()
+		# Test Map
+		await Ʃ.Map List, ( Value, Key, autocb ) ->
+			await setTimeout defer(), Math.random()*10
+			console.log Key
+			Key
+		, defer List
+		console.log List
 
 
-	# Test Map
-	await Ʃ.Map List, ( Value, Key, autocb ) ->
-		await setTimeout defer(), Math.random()*10
-		Key
-	, defer List
-	console.log List
+		# Test Reduce
+		await Ʃ.Map List, ( ( Value, Key, autocb ) -> 2 ), defer List
+		await Ʃ.Reduce List, ( Value, Key, PartialSum, autocb ) ->
+			await setTimeout defer(), Math.random()*10
+			console.log Key+':'+Value+' = '+PartialSum()
+			PartialSum()+Value
+		, 0, defer Sum
+		console.log Sum
+		console.log 'Test passed' if Sum==20
+		console.log 'Test failed' if Sum!=20
 
-
-	# Test Reduce
-	await Ʃ.Map List, ( ( Value, Key, autocb ) -> 2 ), defer List
-	await Ʃ.Reduce List, ( PartialSum, Value, Key, autocb ) ->
-		await setTimeout defer(), Math.random()*10
-		console.log Key+':'+Value+' = '+PartialSum()
-		PartialSum()+Value
-	, 0, defer Sum
-	console.log Sum
-	console.log 'Test passed' if Sum==20
-	console.log 'Test failed' if Sum!=20
+	console.log "Testing Object"
+	await RunTestOn { a:0, b:0, c:0, d:0, e:0, f:0, g:0, h:0, i:0, j:0 }, defer()
+	console.log "Testing Array"
+	await RunTestOn [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ], defer()
 
 
 ###############################################################################
 # Tests to run
 ###############################################################################
 
-# RunAsyncTests()
+RunAsyncTests()
 
 
 ###############################################################################
