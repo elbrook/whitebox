@@ -2,7 +2,7 @@
 // Handle all Imap requests and connections, using node-imap and mailparser libraries.
 //
 // TO IMPROVE:
-// -- AVOID OPENING BOXES ALL THE TIME – QUICKER DOWNLOADING
+// -- ADD TIMEOUTS TO ALL FUNCTIONS… MAYBE IN INITACTION?
 //
 // TO FIX:
 // -- SAVING MESSAGES (SENT, DRAFTS) HAS 1970 DATE (AND USUALLY NO MESSAGEID) EXCEPT ON GMAIL
@@ -17,13 +17,6 @@ MailParser = require('mailparser').MailParser,
   
 var nodemailer = require('nodemailer'),
   MailComposer = require('mailcomposer').MailComposer;
-
-
-//
-// Global (i.e. persistent) variables
-//
-var connections = {};
-var connectionsQueue = [];
 
 
 //
@@ -47,6 +40,13 @@ function MailConnection() {
 	
 	
 	//
+	// Global (i.e. persistent) variables
+	//
+	var connections = {};
+	var connectionsQueue = {};
+	
+	
+	//
 	// Set up Imap connections
 	//
 	function UpdateConnections( settingsList ) {
@@ -55,32 +55,35 @@ function MailConnection() {
 		}
 	}
 	function UpdateConnection( accountName, settings ) {
-		connections[accountName] = new Imap(settings);
+		connections[accountName] = {};
+		connections[accountName].boxConnections = {};
+		connections[accountName].settings = settings;
 		connections[accountName].name = accountName;
-		connections[accountName].logName = accountName.substr(0,10);
+		connections[accountName].logName = Shorten( accountName, 20 );
 			// for console.log
 	}
 
 
 	//
 	// Main function
+	// Start updating each account, return when done.
 	//
 	function Update( callback ) {
-		if( connectionsQueue.length > 0 ) {
+		if( ObjectSize(connectionsQueue) > 0 ) {
 			console.log("Already updating");
 			callback();
 			return;
 		}
 
-		_.each( connections, function(imap) {
-			connectionsQueue.push(imap.name);
-			updateMessages(imap);
-		}
+		_.each( connections, function(account) {
+			connectionsQueue[account.name] = true;
+			updateMessagesOnAccount( account );
+		});
 		
-		var timer = setInterval( waitUpdates, 5000 );
+		var waitTimer = setInterval( waitUpdates, 5000 );
 		function waitUpdates() {
-			if( connectionsQueue.length == 0 ) {
-				clearInterval(timer);
+			if( ObjectSize(connectionsQueue) == 0 ) {
+				clearInterval(waitTimer);
 				callback();
 			}
 		}
@@ -89,182 +92,191 @@ function MailConnection() {
 
 	//
 	// Sync messages
+	// Do fetch on every box. Get boxes list if connections aren't set up yet.
 	//
-	function updateMessages( imap ) {
-			
-		var boxesQueue = [];
+	function updateMessagesOnAccount( account ) {
 		
-		if( !imap.inbox || !imap.sentBoxes || !imap.draftBoxes )
-			getBoxesList(imap.name, fetchMessages, function(err){
-				fetchLog( 'Account error', '', '', err );
-				connectionsQueue.pop()
+		if( ObjectSize(account.boxConnections ) == 0 ) {
+			getBoxesList( account, syncBoxesOnAccount, function(err) {
+				fetchLog( err, '', '', '' );
 			});
-		else
-			fetchMessages();
-			
-		// Call fetch on every box
-		function fetchMessages() {
-			imap.allBoxes.forEach( function(boxName) {
-				boxesQueue.push( {boxName:boxName} );
-				initAction( imap.name, boxName, doFetch, function(){ boxesQueue.pop() } );
-			});
-			startFetchWatch();
+		} else {
+			syncBoxesOnAccount( account );
 		}
 		
-		// Keep track of fetch progress
-		var timer;
-		var inactivityCount = 0;
-		var lastQueueLength;
-		function startFetchWatch() {
-			timer = setInterval( fetchWatch, 5000 );
-			lastQueueLength = boxesQueue.length
-		}
-		function fetchWatch() {
-			// Calculate progress
-			var percentDone =
-				( 1 - boxesQueue.length / imap.allBoxes.length ) *100;
-			
-			if( boxesQueue.length < lastQueueLength ) {
-				lastQueueLength = boxesQueue.length;
-				inactivityCount = 0;
-				UI.UpdatesProgress( imap.name, percentDone );
-			} else {
-				// If there's been no activity, get ready to time out
-				inactivityCount++;
-				fetchLog( 'Inactive', '', '', inactivityCount*5+' seconds' );
-			}
-			
-			// Check if done
-			if( boxesQueue.length == 0 || inactivityCount >= 36 /*3min*/ ) {
-				clearInterval( timer );
-				fetchLog( 'Account done', '', '', '');
-				MailStorage.SaveHeaders();
-				UI.Refresh();
-				connectionsQueue.pop();
-			}
-		}
-		
-		// Sync mailbox
-		function doFetch( imap, box ) {
-			var searchDate = moment().subtract(6,'months').toDate();
-			imap.search([ ['SINCE', searchDate] ], function(err, UIDs) {
-				if(err) {
-					fetchLog( 'Error', box.name, '', err );
-					boxCleanUp();
-					return;
-				}
-				if( UIDs.length == 0 ) {
-					boxCleanUp();
-					return;
-				}
-				
-				// Clean up local files
-				MailStorage.DeleteExcept( imap, box, UIDs );
+	}
 
-				// Update \Seen flags in saved headers
-				imap.search([ 'UNSEEN',['SINCE',searchDate] ], function(err,unseenUIDs) {
-					var newlySeenUIDs = _.difference(
-						MailStorage.GetUnseenUIDsInBox(imap.name, box.name),
-							unseenUIDs );
-					MailStorage.MarkAsSeenInBox( imap, box, newlySeenUIDs );
+	// Start sync on every box, and wait till they're done
+	function syncBoxesOnAccount( account ) {
+		
+		var boxesQueue = {};
+		
+		// Call sync on each box
+		_.each( account.boxConnections, function(connection) {
+			boxesQueue[connection.boxName] = true;
+			syncBox( connection, function() {
+				delete boxesQueue[connection.boxName];
+			});
+		});
+		startSyncWait();
+		
+		// Wait for syncing to end
+		var waitTimer;
+		function startSyncWait() {
+			waitTimer = setInterval( syncWatch, 5000 );
+		}
+		function syncWatch() {
+			if( ObjectSize(boxesQueue) == 0 ) {
+				cleanupAccount();
+			}
+		}
+		function cleanupAccount() {
+			clearInterval(waitTimer);
+			delete connectionsQueue[account.name];
+		}
+	}
+			
+	// Do the sync
+	function syncBox( imap, callback ) {
+		var syncTimeout = setTimeout( syncCleanup, 1000*60*3 );
+		
+		var searchDate = moment().subtract(6,'months').toDate();
+		
+		imap.search([ ['SINCE', searchDate] ], function(err, UIDs) {
+			if(err) {
+				syncLog( err );
+				syncCleanup();
+				return;
+			}
+			if( UIDs.length == 0 ) {
+				syncCleanup();
+				return;
+			}
+			
+			// Clean up local files
+			MailStorage.DeleteExcept( imap.id, UIDs );
+
+			// Update \Seen flags in saved headers
+			imap.search([ 'UNSEEN',['SINCE',searchDate] ], function(err,unseenUIDs) {
+				var newlySeenUIDs = _.difference(
+					MailStorage.GetUnseenUIDsInBox(imap.id),
+					unseenUIDs );
+				console.log( MailStorage.GetUnseenUIDsInBox(imap.id)+' - '+unseenUIDs+' = '+newlySeenUIDs );
+				if( newlySeenUIDs.length > 0 )
+					MailStorage.MarkAsSeenInBox( imap.id, newlySeenUIDs );
+			});
+			
+			// Download the headers we don't have
+			var newMessages = _.difference(
+				UIDs,
+				MailStorage.GetUIDsInBox(imap.id) );
+			syncLog( 'Fetch total: ' + newMessages.length );
+			if( newMessages.length>0 ) {
+				var f = imap.fetch( newMessages, {
+					envelope: true,
+					struct: true
 				});
-				
-				// Download headers we don't have
-				var newMessages = _.difference(UIDs, MailStorage.GetUIDsInBox(imap.name, box.name));
-				fetchLog( 'Fetch total', box.name, '', newMessages.length );
-				if( newMessages.length>0 ) {
-					var f = imap.fetch( newMessages, {
-						envelope: true,
-						struct: true
+				f.on( 'message', function(message, seqnum) {
+					message.once('attributes', function(attributes) {
+						MailStorage.AddHeader(imap.id, imap.account, imap.box, attributes);
 					});
-					f.on( 'message', function(message, seqnum) {
-						message.once('attributes', function(attributes) {
-							MailStorage.AddHeader(imap.name, box.name, attributes);
-						});
-					});						
-					f.once( 'end', function() {
-						boxCleanUp();
-					});
-					f.once( 'error', function(err) {
-						fetchLog( 'Error', box.name, '', err );
-						boxCleanUp();
-					});
-				} else {
-					boxCleanUp();
-				}
-			});
-		}
-		
-		// Fetch utilities
-		function boxCleanUp() {
-			imap.lock = false;
-			boxesQueue.pop();
-			fetchLog( 'Box done', '', '', '' );
-		}
-		function fetchLog( type, boxName, UID, param, param2 ) {
-			var ID = boxName+'.'+UID;
-			switch(type) {
-				case 'Box done':
-					recentActivity = 1;
-					boxPercentDone = 0;
-					doPrint();
-					break;
-				default:
-					doPrint();
+				});						
+				f.once( 'end', function() {
+					syncCleanup();
+				});
+				f.once( 'error', function(err) {
+					syncLog( err );
+					syncCleanup();
+				});
+			} else {
+				syncCleanup();
 			}
-			function doPrint() {
-				var header = imap.logName+'/'+ID+': ';
-				//console.log( header+type+' '+param );
-				UI.UpdatesLog( header+type+' '+param );
-			}
+		});
+	
+		function syncCleanup() {
+			clearTimeout( syncTimeout );
+			syncLog( 'Box done' );
+			callback();
 		}
-	}	// END updateMessages( imap )
-
+		function syncLog( message ) {
+			UI.UpdatesLog( imap.logName + ': ' + message );
+			console.log( imap.logName + ': ' + message );
+		}
+	}
+	
 
 	//
 	// Get boxes list
 	//
-	function getBoxesList(accountName, callback, onError) {
-		var imap = connections[accountName];
-		initAction( imap.name, null, function(imap) {
+	function getBoxesList(account, callback, onError) {
+		
+		console.log( account.logName+': getBoxesList' );
+		
+		var boxProgress = [];
+		// Wait for the connections to be established
+		var waitTimer;
+		function waitBoxes() {
+			if( boxProgress.length == 0 ) {
+				clearInterval( waitTimer );
+				callback( account );
+			}
+		}
+		
+		initAction( account.name, null, function(imap) {
+			console.log( account.logName+': getBoxesList - connection ready' );
+			
 			imap.getBoxes( function(err,boxes) {
 				if(err) {
 					console.log( imap.logName+': '+err );
-					imap.lock = false;
 					if( onError ) onError(err);
 					return;
 				}
 				
-				imap.inbox = 'INBOX'; // Do we need to check this?
-				imap.sentBoxes = recurseBox( '', boxes, 'Sent' );
-				imap.draftBoxes = recurseBox( '', boxes, 'Draft' );
-				imap.allBoxes = imap.sentBoxes.concat( imap.draftBoxes ).concat( [imap.inbox] );
+				// Find all the right box names
+				account.inbox = 'INBOX'; // Do we need to check this?
+				account.sentBoxes = recurseBox( '', boxes, imap.delimiter, 'Sent' );
+				account.draftBoxes = recurseBox( '', boxes, imap.delimiter, 'Draft' );
+				account.allBoxes = account.sentBoxes.concat( account.draftBoxes ).concat( [account.inbox] );
 			
-				console.log( imap.logName + ': found boxes: ' + imap.allBoxes );
-				imap.lock = false;
-				callback();
-				onError = null; // Never call both callback and onError
+				// Open a connection to every box
+				console.log( imap.logName + ': found boxes: ' + account.allBoxes );
 				
-				function recurseBox( path, box, searchString, depth ) {
-					var boxNames = [];
-					if( !depth ) {depth = 0} else {
-						if( depth>1 ) return boxNames;
-					}
-					for( var i in box ) {
-						if( i.indexOf(searchString) > -1 ) {
-							boxNames.push(path+i);
-						}
-						if( box[i].children ) {
-							var newNames = recurseBox( path+i+imap.delimiter, box[i].children, searchString, depth+1 );
-							if( newNames.length > 0 ) {
-								boxNames = boxNames.concat(newNames);
-							}
-						}
-					}
-					return boxNames;
-				}
+				account.allBoxes.forEach( function(boxName) {
+					boxProgress.push(boxName);
+					initAction( account.name, boxName, function(connection) {
+						
+						account.boxConnections[boxName] = connection;
+						boxProgress.splice( boxProgress.indexOf(boxName), 1 );
+						//console.log( connection.logName+': created. '+boxProgress.length+' left' );
+						
+					});
+				});
+				
+				waitTimer = setInterval( waitBoxes, 5000 );
+				
 			});
 		}, onError);
+		
+		// Helper function to search for relevant boxes in box Object
+		function recurseBox( path, box, delimiter, searchString, depth ) {
+			var boxNames = [];
+			if( !depth ) {depth = 0} else {
+				if( depth>1 ) return boxNames;
+			}
+			for( var i in box ) {
+				if( i.indexOf(searchString) > -1 ) {
+					boxNames.push(path+i);
+				}
+				if( box[i].children ) {
+					var newNames = recurseBox( path+i+delimiter, box[i].children, delimiter, searchString, depth+1 );
+					if( newNames.length > 0 ) {
+						boxNames = boxNames.concat(newNames);
+					}
+				}
+			}
+			return boxNames;
+		}
+
 	}
 
 
@@ -275,25 +287,38 @@ function MailConnection() {
 		var message = MailStorage.GetHeader(GUID);
 		
 		initAction( message.account, message.box, function(imap) {
+			
 			console.log( 'Marking '+message.box+'.'+message.attributes.uid+' '+flag+' '+message.account );	
+
 			imap.addFlags( message.attributes.uid, flag, function(err) {
+
 				if(err) {
 					console.log(err);
-					imap.lock = false;
 				} else {
-					imap.closeBox( function(err) {
-						if(err) {
-							console.log(err);
-							imap.lock = false;
-						} else {
-							console.log( 'Marked '+message.box+'.'+message.attributes.uid+' '+flag+' '+message.account );
-							imap.lock = false;
-							callback(); // only if successful
-						}
-					});
+					if( flag == "\\Deleted" ) {
+
+						// Need to close box once to finalize change
+						imap.closeBox( function(err) {
+							if(err) { console.log(err); }
+							else {
+								imap.openBox( message.box, function(err,box) {
+									if(err) console.log(err);
+									else cleanup(); // only if successful
+								});
+							}
+						});
+						
+					} else {
+						cleanup();					
+					}
 				}
 			});
 		});
+		
+		function cleanup() {
+			console.log( 'Marked '+message.box+'.'+message.attributes.uid+' '+flag+' '+message.account );
+			callback(); // only if successful
+		}
 	}
 
 
@@ -338,20 +363,22 @@ function MailConnection() {
 		});
 	}
 	function saveSentMail( mailStream, accountName, callback ) {
-		if( !connections[accountName].sentBoxes )
-			getBoxesList( accountName, function() {
-				saveMessageToBox( mailStream, accountName, connections[accountName].sentBoxes[0], ["\\Seen"], callback );
+		var account = connections[accountName];
+		if( !account.sentBoxes )
+			getBoxesList( account, function() {
+				saveMessageToBox( mailStream, accountName, account.sentBoxes[0], ["\\Seen"], callback );
 			});
 		else
-			saveMessageToBox( mailStream, accountName, connections[accountName].sentBoxes[0], ["\\Seen"], callback );
+			saveMessageToBox( mailStream, accountName, account.sentBoxes[0], ["\\Seen"], callback );
 	}
 	function saveDraftMail( mailStream, accountName, callback ) {
-		if( !connections[accountName].draftBoxes )
-			getBoxesList( accountName, function() {
-				saveMessageToBox( mailStream, accountName, connections[accountName].draftBoxes[0], [], callback );
+		var account = connections[accountName];
+		if( !account.draftBoxes )
+			getBoxesList( account, function() {
+				saveMessageToBox( mailStream, accountName, account.draftBoxes[0], [], callback );
 			});
 		else
-			saveMessageToBox( mailStream, accountName, connections[accountName].draftBoxes[0], [], callback );
+			saveMessageToBox( mailStream, accountName, account.draftBoxes[0], [], callback );
 	}
 	function saveMessageToBox( mailStream, accountName, boxName, flags, callback ) {
 		initAction( accountName, boxName, function(imap) {
@@ -362,11 +389,9 @@ function MailConnection() {
 			}, function(err) {
 				if(err)	{
 					console.log(err);
-					imap.lock = false;
 					callback(err);
 				} else {
 					console.log('Message saved to '+boxName);
-					imap.lock = false;
 					callback();
 				}
 			});
@@ -378,19 +403,27 @@ function MailConnection() {
 	// Download message bodies, including attachments
 	//
 	function DownloadParts( GUID, callback ) {
+
 		console.log('Need to download '+GUID);
 		UI.SetupDownloadIndicator('Downloading message from server. Connecting…');
 		var message = MailStorage.GetHeader( GUID );
+
 		initAction( message.account, message.box, function(imap) {
+
 			console.log('Opened box for download');
 			UI.DownloadProgress('Connected.');
+
 			var f = imap.fetch( message.attributes.uid, {bodies: ''} );
+
 			f.on('message', function(message, seqnum) {
+
 				var mailparser = new MailParser({streamAttachments: true});
+
 				message.on('body', function(stream, info) {
 					stream.pipe(mailparser);
 					UI.DownloadProgress(filesize(info.size)+' total to download.');
 				});
+
 				mailparser.on('attachment', function(attachment) {
 					MailStorage.SaveAttachment(GUID, attachment);
 					console.log(JSON.stringify(attachment));
@@ -398,74 +431,134 @@ function MailConnection() {
 						UI.DownloadAttachmentProgress(attachment.generatedFileName, chunk.length);
 					});
 				});
+
 				mailparser.once('end', function(mail) {
 					MailStorage.SaveMessage(GUID, mail);
 					callback();
 					UI.EndDownloadIndicator();
 				});
 			});
+
 			f.once('error', function(err) {
 				console.log(err);
-				imap.lock = false;
 				UI.EndDownloadIndicator();
 			});
+
 			f.once('end', function() {
-				imap.lock = false;
 			});
 		}, function(err){
 			UI.DownloadProgress(err);
 			setTimeout( function(){UI.EndDownloadIndicator();}, 3000 ); 
 		});
 	}
+
+
 	//
 	// Helper functions
 	//
 	function initAction( accountName, boxName, callback, onError ) {
-		var imap = connections[accountName];
 		
-		var timer = setInterval( waitLock, 5000 );
-		function waitLock() {
-			if( !imap.lock ) {
-				imap.lock = true;
-				clearInterval(timer);
-				setTimeout( doConnect, 1000 ); // Having errors. See if this helps.
+		// console.log( 'initAction '+accountName );
+
+		if( boxName != null &&
+			connections[accountName].boxConnections[boxName] &&
+			connections[accountName].boxConnections[boxName].state != "disconnected" ) {
+			callback( connections[accountName].boxConnections[boxName] );
+			return;
+		}
+			
+		console.log( connections[accountName].logName+': creating new connection' );
+			 		
+		var imap = new Imap( connections[accountName].settings );
+		imap.id = accountName + '/' + boxName;
+		imap.account = accountName;
+		imap.box = boxName;
+		imap.logName = Shorten( accountName + boxName, 20 );
+
+		imap.connect();
+		imap.once( 'ready', function() {
+			if( boxName ) {
+				imap.openBox( boxName, function(err,box) {
+					if(err) {
+						console.log('Error: '+err);
+						if( onError ) onError(err);
+					} else {
+						callback(imap, box);
+						onError = null;
+					}
+				});
 			} else {
-				//console.log( imap.logName + ' is locked. ' + boxName + ' is waiting...' );
+				callback(imap);
+				onError = null;
 			}
-		}
+		});
 		
-		function doConnect() {
-			initConnect(imap, function() {
-				if( boxName ) {
-					imap.openBox( boxName, function(err,box) {
-						if(err) {
-							console.log(err);
-							imap.lock=false;
-							if( onError ) onError(err);
-						} else {
-							callback(imap, box);
-							onError = null;
-						}
-					});
-				} else {
-					callback(imap);
-					onError = null;
-				}
-			}, function(err) {
-				console.log(err);
-				imap.lock = false;
-				if( onError ) onError(err);
-			});
-		}
+		imap.once( 'error', function(err) {
+			console.log(err);
+			if( onError ) onError(err);
+		});
 	}
 
-	function initConnect(imap, callback, onError) {
-		if( imap.state == 'disconnected' ) {
-			imap.connect();
-			imap.once('ready', callback);
-			imap.once('error', onError);
-		} else {
-			callback();
+	
+	//
+	// Generic helper functions
+	//
+	function ObjectSize( obj ) {
+		var size = 0;
+		for( var key in obj ) {
+			if( obj.hasOwnProperty(key) ) size++;
 		}
+		return size;
 	}
+	function resetTimeout( timeout, callback, duration ) {
+		clearTimeout( timeout );
+		return setTimeout( callback, duration );
+	}
+	function Shorten( string, l ) {
+
+		var newString = removeEvenly( string, l, 'vowels' );
+
+		if( newString.length > l )
+			newString = removeEvenly( newString, l, 'all' );
+			
+		// console.log( newString + ' = ' + newString.length + ' == ' + l );
+		return newString;	
+	}		
+	function removeEvenly( string, l, type ) {
+		
+		var matches;
+		if( type == 'vowels' )
+			matches = string.match( /[aeiou]/gi );
+		else
+			matches = string;
+
+		var removeEvery;
+		if( string.length - l >= matches.length )
+			removeEvery = 1;
+		else
+			removeEvery = matches.length / (string.length - l);
+
+		var	nextRemove = removeEvery - 1,
+			newString = "",
+			matchIndex = 0;
+		
+		for( var i=0; i<string.length; i++ ) {
+			
+			if( string[i] == matches[matchIndex] ) {
+				
+				if( matchIndex == Math.round( nextRemove ) ) {
+					nextRemove += removeEvery;
+				} else {
+					newString += string[i];
+				}
+				matchIndex++;
+				
+			} else {
+				newString += string[i];
+			}
+			
+		}
+		
+		return newString;
+	}	
 }

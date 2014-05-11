@@ -105,11 +105,12 @@ class MailConnection
 	@UpdateConnections = ( SettingsList ) ->
 
 		await Ʃ.Reduce SettingsList, ( Setting, AccountName, MasterList, autocb ) ->
+			
 			await UpdateAccount Setting, AccountName, defer BoxNames
 			await Ʃ.Map BoxNames, ( BoxName, Index, autocb ) ->
 				ConnectionID AccountName, BoxName
 			, defer ConnectionsList
-			
+
 			MasterList().concat ConnectionsList
 
 		, [], defer UpdatedList
@@ -254,7 +255,7 @@ class MailConnection
 ###############################################################################
 # MailConnection initializations
 ###############################################################################
-	
+
 	# Connections = MailConnection.UpdateConnections MailStorage.GetSettings()
 	# MailConnection.SyncAll()
 

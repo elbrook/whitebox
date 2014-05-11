@@ -81,15 +81,16 @@ function MailStorage() {
 	function GetHeader( GUID ) {
 		return headers[GUID];
 	}
-	function AddHeader( accountName, boxName, header ) {
-		var GUID = makeGUID( accountName, boxName, header.uid );
+	function AddHeader( connectionID, accountName, boxName, header ) {
+		var GUID = makeGUID( connectionID, header.uid );
 		if( !headers[GUID] ) headers[GUID] = {};
 		headers[GUID].attributes = header;
 		headers[GUID].account = accountName;
 		headers[GUID].box = boxName;
 		headers[GUID].id = GUID;
+		headers[GUID].connectionID = connectionID;
 		headers[GUID].parts = flattenStruct( header.struct );
-		console.log( GUID+': '+JSON.stringify(headers[GUID].parts) );
+		// console.log( GUID+': '+JSON.stringify(headers[GUID].parts) );
 	}
 	function SaveHeaders() {
 		FS.SaveHeadersFile( headers );
@@ -99,18 +100,18 @@ function MailStorage() {
 	//
 	// Methods related to fetching 
 	//
-	function GetUIDsInBox( accountName, boxName ) {
+	function GetUIDsInBox( connectionID ) {
 		var inBox = _.filter( headers, function(header){
-			return header.box == boxName;
+			return header.connectionID == connectionID;
 		});
 		return _.map( inBox, function(header) {
 			var num = parseInt(header.attributes.uid);
 			return num? num:null;
 		});
 	}
-	function GetUnseenUIDsInBox( accountName, boxName ) {
+	function GetUnseenUIDsInBox( connectionID ) {
 		var boxHeaders = _.filter( headers, function(header) {
-			return header.account == accountName && header.box == boxName;
+			return header.connectionID == connectionID;
 		});
 		var unseenHeaders = _.filter( boxHeaders, function(header) {
 			return header.attributes.flags.indexOf("\\Seen") == -1;
@@ -119,12 +120,12 @@ function MailStorage() {
 			return header.attributes.uid;
 		});
 	}
-	function DeleteExcept( accountName, boxName, UIDs ) {
-		var myUIDs = GetUIDsInBox( accountName, boxName );
+	function DeleteExcept( connectionID, UIDs ) {
+		var myUIDs = GetUIDsInBox( connectionID );
 		var superfluous = _.difference( myUIDs, UIDs );
 		//console.log( myUIDs+' - '+UIDs+' = '+superfluous );
 		superfluous.forEach( function(UID) {
-			var GUID = makeGUID(accountName,boxName,UID);
+			var GUID = makeGUID( connectionID, UID );
 			DeleteMessage(GUID);
 		});
 	}
@@ -152,6 +153,7 @@ function MailStorage() {
 		// NEED TO DELTE ATTACHMENTS TOO
 	}
 	function MarkAsSeenInBox( accountName, boxName, UIDs ) {
+		if( !UIDs || UIDs.length == 0 ) return;
 		UIDs.forEach( function(UID) {
 			var GUID = makeGUID(accountName, boxName, UID);
 			MarkAsSeenByID( GUID );
@@ -167,8 +169,8 @@ function MailStorage() {
 	//
 	// Utility functions
 	//
-	function makeGUID( accountName, boxName, UID ) {
-		return accountName+'/'+escapeBoxName(boxName)+'.'+UID;
+	function makeGUID( connectionID, UID ) {
+		return escapeBoxName(connectionID)+'.'+UID;
 	}
 
 	// For Gmail+fs+RegExp. Might be better to be more systematic about this...
@@ -177,11 +179,11 @@ function MailStorage() {
 		newName = newName.replace(']','»');
 		return newName.replace('/','…');
 	}
-	function unescapeBoxName( name ) {
+	/*function unescapeBoxName( name ) {
 		var newName = name.replace('«','[');
 		newName = newName.replace('»',']');
 		return newName.replace('…','/');
-	}
+	}*/
 
 	function parseTextForHTML( subject, text ) {
 		if( !text ) text = '';
