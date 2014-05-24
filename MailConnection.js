@@ -161,7 +161,6 @@ function MailConnection() {
 				var newlySeenUIDs = _.difference(
 					MailStorage.GetUnseenUIDsInBox(imap.id),
 					unseenUIDs );
-				console.log( MailStorage.GetUnseenUIDsInBox(imap.id)+' - '+unseenUIDs+' = '+newlySeenUIDs );
 				if( newlySeenUIDs.length > 0 )
 					MailStorage.MarkAsSeenInBox( imap.id, newlySeenUIDs );
 			});
@@ -196,6 +195,7 @@ function MailConnection() {
 		function syncCleanup() {
 			clearTimeout( syncTimeout );
 			syncLog( 'Box done' );
+			MailStorage.SaveHeaders();
 			callback();
 		}
 		function syncLog( message ) {
@@ -418,10 +418,17 @@ function MailConnection() {
 			f.on('message', function(message, seqnum) {
 
 				var mailparser = new MailParser({streamAttachments: true});
+				var buffer = '';
 
 				message.on('body', function(stream, info) {
 					stream.pipe(mailparser);
 					UI.DownloadProgress(filesize(info.size)+' total to download.');
+					stream.on('data', function(chunk) {
+						buffer += chunk;
+					});
+					stream.once('end', function() {
+						console.log(buffer);
+					});
 				});
 
 				mailparser.on('attachment', function(attachment) {

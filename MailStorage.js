@@ -170,15 +170,16 @@ function MailStorage() {
 	// Utility functions
 	//
 	function makeGUID( connectionID, UID ) {
-		return escapeBoxName(connectionID)+'.'+UID;
+		//return escapeBoxName(connectionID)+'.'+UID;
+		return connectionID+'/'+UID;
 	}
 
 	// For Gmail+fs+RegExp. Might be better to be more systematic about this...
-	function escapeBoxName( name ) {
+	/*function escapeBoxName( name ) {
 		var newName = name.replace('[','«');
 		newName = newName.replace(']','»');
 		return newName.replace('/','…');
-	}
+	}*/
 	/*function unescapeBoxName( name ) {
 		var newName = name.replace('«','[');
 		newName = newName.replace('»',']');
@@ -305,7 +306,8 @@ function FS() {
 		fs.writeFileSync('Account settings.json', JSON.stringify(settings));
 	}
 	function DeleteMessage( GUID ) {
-		fs.unlinkSync( 'Emails/'+GUID+'/message.html' );
+		if( fs.existsSync( 'Emails/'+GUID+'/message.html' ) )
+			fs.unlinkSync( 'Emails/'+GUID+'/message.html' );
 	}
 
 	function makePath( path ) {
