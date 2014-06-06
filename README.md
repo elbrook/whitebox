@@ -25,4 +25,4 @@ Installation
 
 Pre-release downloads (there will be bugs):
 * [OS X (alpha 2)](https://github.com/elbrook/whitebox/releases/download/alpha2/Whitebox.zip)
-* [Linux 64-bit (alpha 1 – better to use `git clone git://github.com/elbrook/whitebox`)](https://github.com/elbrook/whitebox/releases/download/alpha1/Whitebox-alpha1-Linux64.zip)
+* [Linux 64-bit (alpha 1)](https://github.com/elbrook/whitebox/releases/download/alpha1/Whitebox-alpha1-Linux64.zip) – better to use `git clone git://github.com/elbrook/whitebox`
